@@ -1,0 +1,7 @@
+Azure Automation DSC Provisioning Tool
+
+There are two scripts available to assist in provisioning Azure DSC Resources
+	Azure_dsc_module_automation_tool - Creates Storage Account, Uploads Modules for DSC, Installs Modules for DSC
+	Azure_dsc_automation_tool - Registers new DSC Assets, Imports/Exports DSC Configurations
+
+Note, these scripts require Azure Powershell 1.0.
