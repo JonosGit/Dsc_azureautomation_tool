@@ -1,12 +1,60 @@
 ﻿<#
 .SYNOPSIS
 Written By John N Lewis
-v 1.5
+v 1.6
 This script provides an automated deployment capability for DSC and Azure Automation.
 
 .DESCRIPTION
 Provides framework for deploying DSC to Azure Automation
 
+.PARAMETER AutoAcctName
+
+.PARAMETER VMName
+
+.PARAMETER NodeName
+
+.PARAMETER ConfigurationName
+
+.PARAMETER VMresourceGroupName
+
+.PARAMETER resourceGroupName
+
+.PARAMETER locadmin
+
+.PARAMETER locpassword
+
+.PARAMETER Location
+
+.PARAMETER VMLocation
+
+.PARAMETER containerName
+
+.PARAMETER thisfolder
+
+.PARAMETER localfolder
+
+.PARAMETER destfolder
+
+.PARAMETER OutputFolder
+
+.PARAMETER SourcePath
+
+.PARAMETER nodeconfigpath
+
+.PARAMETER SubscriptionID
+
+.PARAMETER TenantID
+
+.PARAMETER StorageName
+
+.PARAMETER StorageType
+
+.EXAMPLE
+
+.EXAMPLE
+
+.NOTES
+Created with Jason Yoders New-HelpFile cmdlet.
 #>
 
 [CmdletBinding()]
