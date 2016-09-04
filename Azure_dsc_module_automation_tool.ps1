@@ -1,11 +1,11 @@
 ﻿<#
 .SYNOPSIS
 Written By John N Lewis
-v 1.6
+v 1.7
 This script provides an automated deployment capability for DSC and Azure Automation.
 
 .DESCRIPTION
-Provides framework for deploying DSC to Azure Automation
+Provides framework for deploying DSC to Azure Automation. Creates New Automation Account, Creates Storage Account, Uploads Modules to Azure Automation for utilization.
 
 .PARAMETER containerName
 
@@ -25,14 +25,13 @@ Provides framework for deploying DSC to Azure Automation
 
 .PARAMETER modulename
 
-.PARAMETER InformationAction
+.PARAMETER Location
 
-.PARAMETER InformationVariable
+.PARAMETER Action
 
 .EXAMPLE
 
 #>
-
 
 param(
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
@@ -40,10 +39,16 @@ param(
 $containerName = "dsc",
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
-$ResourceGroupName = "",
+$ResourceGroupName = "auto-dsc",
+[Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
+[bool]
+$CreateStorage = $True,
+[Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
+[bool]
+$CreateAzAutoAcct = $False,
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
-$StorageName = "",
+$StorageName = "aiptblvg1",
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
 $thisfolder = "C:\Templates",
@@ -55,24 +60,34 @@ $localfolder = "$thisfolder\dsc",
 $destfolder = "Modules",
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
-$ContentLink = "",
+$ContentLink = "https://$StorageName.blob.core.windows.net/dsc/Modules/$modulename.zip",
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
-$AutoAcctName = "",
+$AutoAcctName = "dscauto",
+[Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
+[string]
+$Location = 'EastUs2',
+[Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
+[string]
+$Action = 'Ne',
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
 $modulename = "xWebAdministration"
 )
 ### Authenticate to Microsoft Azure using Microsoft Account (MSA) or Azure Active Directory (AAD)
 
-Function NewModule {
-$module = $modulename
-$content = $ContentLink
-New-AzureRmAutomationModule -Name $module -ContentLink $content -ResourceGroupName $ResourceGroupName -AutomationAccountName $AutoAcctName
+Function StorageNameCheck
+{
+$checkname =  Get-AzureRmStorageAccountNameAvailability -Name $StorageName | Select-Object -ExpandProperty NameAvailable
+if($checkname -ne 'True') {
+Write-Host "Storage Account Name in use, please choose a different name for your storage account"
+Start-Sleep 5
+exit
+}
 }
 
 Function VerifyProfile {
-$ProfileFile = ""
+$ProfileFile = "c:\Temp\live.json"
 $fileexist = Test-Path $ProfileFile
   if($fileexist)
   {Write-Host "Profile Found"
@@ -85,37 +100,17 @@ $fileexist = Test-Path $ProfileFile
   }
 }
 
-Function NewModule {
-$module = $modulename
-$content = $ContentLink
-New-AzureRmAutomationModule -Name $module -ContentLink $content -ResourceGroupName $ResourceGroupName -AutomationAccountName $AutoAcctName
+Function AddAzAutoAccount {
+New-AzureRmAutomationAccount -Location $Location -ResourceGroupName $resourceGroupName -Name $AutoAcctName -Plan Free -WarningAction SilentlyContinue
 }
 
-Function SetModule { 
-$module = $modulename
-$content = $ContentLink
-Set-AzureRmAutomationModule -Name $module -ContentLinkUri $content -ResourceGroupName $ResourceGroupName -AutomationAccountName $AutoAcctName
-}
-
-Function RemoveModule {
-$module = $modulename
-Remove-AzureRmAutomationModule -Name $module -ResourceGroupName $ResourceGroupName -AutomationAccountName $AutoAcctName -Force -Confirm $false
-}
-VerifyProfile
-### Create an Azure Resource Manager (ARM) Resource Group
-$ResourceGroup = @{
-Name = $ResourceGroupName;
-Location = 'EastUs2';
-Force = $true;
-}
-New-AzureRmResourceGroup @ResourceGroup;
-
+Function NewStorage {
 $StorageAccount = @{
-    ResourceGroupName = $ResourceGroupName;
-    Name = $StorageName;
-    SkuName = 'Standard_LRS';
-    Location = 'EastUS2';
-    }
+	ResourceGroupName = $ResourceGroupName;
+	Name = $StorageName;
+	SkuName = 'Standard_LRS';
+	Location = $Location;
+	}
 New-AzureRmStorageAccount @StorageAccount;
 
 ### Obtain the Storage Account authentication keys using Azure Resource Manager (ARM)
@@ -127,21 +122,68 @@ $StorageContext = New-AzureStorageContext -StorageAccountName $StorageName -Stor
 ### Create a Blob Container in the Storage Account
 New-AzureStorageContainer -Context $StorageContext -Name dsc -ErrorAction SilentlyContinue;
 
-### Upload a file to the Microsoft Azure Storage Blob Container
+### Upload files to the Microsoft Azure Storage Blob Container
 
 $storageAccountKey = Get-AzureRmStorageAccountKey -ResourceGroupName $ResourceGroupName -Name $StorageName;
 $blobContext = New-AzureStorageContext -StorageAccountName $StorageName -StorageAccountKey $Keys[0].Value -ErrorAction SilentlyContinue;
-$files = Get-ChildItem $localFolder 
+$files = Get-ChildItem $localFolder
 foreach($file in $files)
 {
   $fileName = "$localFolder\$file"
   $blobName = "$destfolder/$file"
   write-host "copying $fileName to $blobName"
   Set-AzureStorageBlobContent -File $filename -Container $containerName -Blob $blobName -Context $blobContext -Force -ErrorAction Stop
-} 
+}
 write-host "All files in $localFolder uploaded to $containerName!"
+}
 
-### Deploy Modules to Automation Acct
+Function NewModule {
+$module = $modulename
+$content = $ContentLink
+New-AzureRmAutomationModule -Name $module -ContentLink $content -ResourceGroupName $ResourceGroupName -AutomationAccountName $AutoAcctName
+}
 
+Function SetModule {
+$module = $modulename
+$content = $ContentLink
+Set-AzureRmAutomationModule -Name $module -ContentLinkUri $content -ResourceGroupName $ResourceGroupName -AutomationAccountName $AutoAcctName
+}
+
+Function RemoveModule {
+$module = $modulename
+Remove-AzureRmAutomationModule -Name $module -ResourceGroupName $ResourceGroupName -AutomationAccountName $AutoAcctName -Force -Confirm:$false
+}
+
+Function ExecutionAction {
+switch  ($Action)
+	{
+		"New" {
 NewModule
+}
+		"Remove" {
+RemoveModule
+}
+		"Set" {
+SetModule
+}
+		default{"An unsupported action was referenced"
+		break
+					}
+}
+}
 
+VerifyProfile
+### Create an Azure Resource Manager (ARM) Resource Group
+$ResourceGroup = @{
+Name = $ResourceGroupName;
+Location = $Location;
+Force = $true;
+}
+New-AzureRmResourceGroup @ResourceGroup;
+
+if($CreateAzAutoAcct) {AddAzAutoAccount}
+if($CreateStorage) {
+StorageNameCheck
+NewStorage
+}
+ExecutionAction
