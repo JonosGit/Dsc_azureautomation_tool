@@ -1,7 +1,7 @@
 ﻿<#
 .SYNOPSIS
 Written By John N Lewis
-v 1.7
+v 1.9
 This script provides an automated deployment capability for DSC and Azure Automation.
 
 .DESCRIPTION
@@ -39,7 +39,7 @@ param(
 $containerName = "dsc",
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
-$ResourceGroupName = "auto-dsc",
+$ResourceGroupName = "tstaz",
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [bool]
 $CreateStorage = $True,
@@ -48,13 +48,13 @@ $CreateStorage = $True,
 $CreateAzAutoAcct = $False,
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
-$StorageName = "aiptblvg1",
+$StorageName = "aiptbhjb1",
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
-$thisfolder = "C:\Templates",
+$thisfolder = "C:\Temp",
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
-$localfolder = "$thisfolder\dsc",
+$localfolder = "$thisfolder\Zip",
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
 $destfolder = "Modules",
@@ -63,16 +63,19 @@ $destfolder = "Modules",
 $ContentLink = "https://$StorageName.blob.core.windows.net/dsc/Modules/$modulename.zip",
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
-$AutoAcctName = "dscauto",
+$AutoAcctName = "azauto",
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
 $Location = 'EastUs2',
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
-$Action = 'Ne',
+$Profile = "profile",
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
+[ValidateSet("New","Set","remove")]
 [string]
-$modulename = "xWebAdministration"
+$Action = 'New',
+[Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
+$modulename = @('xNetworking','xComputerManagement','xWindowsUpdate','xWebAdministration','xSQLServer','xStorage','xRobocopy','xPSDesiredStateConfiguration','xDSCDomainJoin','xActiveDirectory','xNetworking','xSCOM','xCredSSP','xAzure','xSCOM','SharePointDsc','NxNetworking','Nx','xPendingReboot','xCertificate',' xRemoteDesktopAdmin','xDnsServer','xDhcpServer','NuGet','xExchange','xSqlIps','xWebDeploy','xDatabase','xDisk','xReleaseManagement','xAzure','xWinEventLog','xFailOverCluster','xOU','xBitlocker','xAdcsDeployment','cSQLConfig','PowerShellModule','xDfS','xDSCFireWall','vscode','BiztalkServer','PSDscResources','ChocolateyGet','AU','cChoco','cChoco-testing')
 )
 ### Authenticate to Microsoft Azure using Microsoft Account (MSA) or Azure Active Directory (AAD)
 
@@ -86,17 +89,21 @@ exit
 }
 }
 
-Function VerifyProfile {
-$ProfileFile = "c:\Temp\live.json"
-$fileexist = Test-Path $ProfileFile
+Function validate-profile {
+$comparedate = (Get-Date).AddDays(-14)
+$fileexist = Test-Path $ProfileFile -NewerThan $comparedate
   if($fileexist)
-  {Write-Host "Profile Found"
-  Select-AzureRmProfile -Path $ProfileFile
+  {
+  Select-AzureRmProfile -Path $ProfileFile | Out-Null
+		Write-Host "Using $ProfileFile"
   }
   else
   {
   Write-Host "Please enter your credentials"
   Add-AzureRmAccount
+  Save-AzureRmProfile -Path $ProfileFile -Force
+  Write-Host "Saved Profile to $ProfileFile"
+  exit
   }
 }
 
@@ -110,6 +117,8 @@ $StorageAccount = @{
 	Name = $StorageName;
 	SkuName = 'Standard_LRS';
 	Location = $Location;
+	ErrorAction = 'SilentlyContinue';
+	Warningaction = 'SilentlyContinue';
 	}
 New-AzureRmStorageAccount @StorageAccount;
 
@@ -120,10 +129,13 @@ $Keys = Get-AzureRmStorageAccountKey -ResourceGroupName $ResourceGroupName -Name
 $StorageContext = New-AzureStorageContext -StorageAccountName $StorageName -StorageAccountKey $Keys[0].Value -ErrorAction SilentlyContinue;
 
 ### Create a Blob Container in the Storage Account
-New-AzureStorageContainer -Context $StorageContext -Name dsc -ErrorAction SilentlyContinue;
-
+New-AzureStorageContainer -Context $StorageContext -Name dsc -Permission Blob -ErrorAction SilentlyContinue;
 ### Upload files to the Microsoft Azure Storage Blob Container
+}
 
+Function Upload-Files {
+$Keys = Get-AzureRmStorageAccountKey -ResourceGroupName $ResourceGroupName -Name $StorageName;
+$StorageContext = New-AzureStorageContext -StorageAccountName $StorageName -StorageAccountKey $Keys[0].Value -ErrorAction SilentlyContinue;
 $storageAccountKey = Get-AzureRmStorageAccountKey -ResourceGroupName $ResourceGroupName -Name $StorageName;
 $blobContext = New-AzureStorageContext -StorageAccountName $StorageName -StorageAccountKey $Keys[0].Value -ErrorAction SilentlyContinue;
 $files = Get-ChildItem $localFolder
@@ -132,26 +144,37 @@ foreach($file in $files)
   $fileName = "$localFolder\$file"
   $blobName = "$destfolder/$file"
   write-host "copying $fileName to $blobName"
-  Set-AzureStorageBlobContent -File $filename -Container $containerName -Blob $blobName -Context $blobContext -Force -ErrorAction Stop
+  Set-AzureStorageBlobContent -File $filename -Container $containerName -Blob $blobName -Context $blobContext -Force -ErrorAction Stop -Confirm:$False
 }
 write-host "All files in $localFolder uploaded to $containerName!"
 }
 
 Function NewModule {
-$module = $modulename
-$content = $ContentLink
+$modulename = @('xNetworking','xComputerManagement','xWindowsUpdate','xWebAdministration','xSQLServer','xStorage','xRobocopy','xPSDesiredStateConfiguration','xDSCDomainJoin','xActiveDirectory','xNetworking','xSCOM','xCredSSP','xAzure','xSCOM','SharePointDsc','NxNetworking','Nx','xPendingReboot','xCertificate',' xRemoteDesktopAdmin','xDnsServer','xDhcpServer','NuGet','xExchange','xSqlIps','xWebDeploy','xDatabase','xDisk','xReleaseManagement','xAzure','xWinEventLog','xFailOverCluster','xOU','xBitlocker','xAdcsDeployment','cSQLConfig','PowerShellModule','xDfS','xDSCFireWall','vscode','BiztalkServer','PSDscResources','ChocolateyGet','AU','cChoco','cChoco-testing');
+
+foreach($module in $modulename)
+{
+[psobject]$content = "https://$StorageName.blob.core.windows.net/dsc/Modules/$module.zip"
 New-AzureRmAutomationModule -Name $module -ContentLink $content -ResourceGroupName $ResourceGroupName -AutomationAccountName $AutoAcctName
+}
 }
 
 Function SetModule {
-$module = $modulename
-$content = $ContentLink
-Set-AzureRmAutomationModule -Name $module -ContentLinkUri $content -ResourceGroupName $ResourceGroupName -AutomationAccountName $AutoAcctName
+$modulename = @('xNetworking','xComputerManagement','xWindowsUpdate','xWebAdministration','xSQLServer','xStorage','xRobocopy','xPSDesiredStateConfiguration','xDSCDomainJoin','xActiveDirectory','xNetworking','xSCOM','xCredSSP','xAzure','xSCOM','SharePointDsc','NxNetworking','Nx','xPendingReboot','xCertificate',' xRemoteDesktopAdmin','xDnsServer','xDhcpServer','NuGet','xExchange','xSqlIps','xWebDeploy','xDatabase','xDisk','xReleaseManagement','xAzure','xWinEventLog','xFailOverCluster','xOU','xBitlocker','xAdcsDeployment','cSQLConfig','PowerShellModule','xDfS','xDSCFireWall','vscode','BiztalkServer','PSDscResources','ChocolateyGet','AU','cChoco','cChoco-testing');
+foreach($module in $modulename)
+{
+[psobject]$content = '\.$module.zip'
+Set-AzureRmAutomationModule -Name $module -ResourceGroupName $ResourceGroupName -AutomationAccountName $AutoAcctName
+}
 }
 
 Function RemoveModule {
-$module = $modulename
+$modulename = @('xNetworking','xComputerManagement','xWindowsUpdate','xWebAdministration','xSQLServer','xStorage','xRobocopy','xPSDesiredStateConfiguration','xDSCDomainJoin','xActiveDirectory','xNetworking','xSCOM','xCredSSP','xAzure','xSCOM','SharePointDsc','NxNetworking','Nx','xPendingReboot','xCertificate',' xRemoteDesktopAdmin','xDnsServer','xDhcpServer','NuGet','xExchange','xSqlIps','xWebDeploy','xDatabase','xDisk','xReleaseManagement','xAzure','xWinEventLog','xFailOverCluster','xOU','xBitlocker','xAdcsDeployment','cSQLConfig','PowerShellModule','xDfS','xDSCFireWall','vscode','BiztalkServer','PSDscResources','ChocolateyGet','AU','cChoco','cChoco-testing');
+
+foreach($module in $modulename)
+{
 Remove-AzureRmAutomationModule -Name $module -ResourceGroupName $ResourceGroupName -AutomationAccountName $AutoAcctName -Force -Confirm:$false
+}
 }
 
 Function ExecutionAction {
@@ -172,7 +195,10 @@ SetModule
 }
 }
 
-VerifyProfile
+$workfolder = Split-Path $script:MyInvocation.MyCommand.Path
+$ProfileFile = $workfolder+'\'+$profile+'.json'
+
+validate-profile
 ### Create an Azure Resource Manager (ARM) Resource Group
 $ResourceGroup = @{
 Name = $ResourceGroupName;
@@ -183,7 +209,7 @@ New-AzureRmResourceGroup @ResourceGroup;
 
 if($CreateAzAutoAcct) {AddAzAutoAccount}
 if($CreateStorage) {
-StorageNameCheck
-NewStorage
-}
+NewStorage }
+
+Upload-Files
 ExecutionAction

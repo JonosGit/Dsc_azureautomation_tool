@@ -1,7 +1,7 @@
 ﻿<#
 .SYNOPSIS
 Written By John N Lewis
-v 1.7
+v 1.8
 This script provides an automated deployment capability for DSC and Azure Automation.
 
 .DESCRIPTION
@@ -61,25 +61,34 @@ Provides framework for deploying DSC to Azure Automation
 
 [CmdletBinding()]
 Param(
+[Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
+[ValidateSet("RegisterDSCNode","CompileJob","ExportConfig","AddAzAccount","ExportConfigreport","GetMetadata","ImportConfig","ImportNodeConfig")]
+[string]
+$Action = 'ImportConfig',
+
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true,Position=0)]
 [string]
-$AutoAcctName = "dscauto",
+$AutoAcctName = "omsauto",
 
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true,Position=2)]
 [string]
-$VMName = "redh001",
+$VMName = "dc101",
 
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
-$NodeName = -join $VMNAME+".node",
+$NodeName = $VMNAME,
 
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
-$ConfigurationName = "redh001.node",
+$ConfigurationName = "PDC",
 
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true,Position=1)]
 [string]
-$resourceGroupName = "auto-dsc",
+$resourceGroupName = "oms",
+
+[Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true,Position=1)]
+[string]
+$VMresourceGroupName = "dcstest",
 
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
@@ -91,17 +100,17 @@ $locpassword = 'P@ssW0rd!',
 
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
-$Location = "EastUs",
+$Location = "EastUs2",
 
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
-$VMLocation = "WestUs",
+$VMLocation = "EastUs",
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
 $containerName = "dsc",
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
-$thisfolder = "C:\Templates",
+$thisfolder = "c:\Temp",
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
 $localfolder = "$thisfolder\dsc",
@@ -110,13 +119,13 @@ $localfolder = "$thisfolder\dsc",
 $destfolder = "dsc",
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
-$OutputFolder = "C:\modules",
+$OutputFolder = "$thisfolder\dsc",
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
-$SourcePath = "C:\modules\Wuscheduled.ps1",
+$SourcePath = -join "$thisfolder\dsc\PDC.ps1",
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
-$nodeconfigpath = "C:\modules",
+$nodeconfigpath = "$thisfolder\dsc",
 
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
@@ -128,22 +137,19 @@ $TenantID = '',
 
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [bool]
-$CreateStorage = $True,
+$CreateStorage = $False,
 
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [bool]
-$CreateAzAutoAcct = $True,
+$CreateAzAutoAcct = $False,
 
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
-$StorageName = "jonodstr",
+$StorageName = $VMName + 'str',
 
 [Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
 [string]
-$StorageType = "Standard_LRS",
-[Parameter(Mandatory=$False,ValueFromPipelinebyPropertyName=$true)]
-[string]
-$Action = 'New'
+$StorageType = "Standard_LRS"
 
 )
 # Global
@@ -157,7 +163,7 @@ $checkname =  Get-AzureRmStorageAccountNameAvailability -Name $StorageName | Sel
 if($checkname -ne 'True') {
 Write-Host "Storage Account Name in use, please choose a different name for your storage account"
 Start-Sleep 5
-break 
+break
 }
 }
 
@@ -169,7 +175,7 @@ Write-Host "Completed Storage Creation" -ForegroundColor White
 } # Creates Storage
 
 Function VerifyProfile {
-$ProfileFile = "c:\Temp\live.json"
+$ProfileFile = "C:\Users\admin\Source\InProg\AIP_ARM\deploy\live.json"
 $fileexist = Test-Path $ProfileFile
   if($fileexist)
   {Write-Host "Profile Found"
@@ -187,21 +193,35 @@ New-AzureRmAutomationAccount -Location $Location -ResourceGroupName $resourceGro
 }
 
 Function RegisterAutoDSC {
-$ActionAfterReboot = ContinueConfiguration
-$configmode = ApplyAndAutocorrect
+				$ActionAfterReboot = 'ContinueConfiguration'
+				$configmode = 'ApplyAndAutocorrect'
+				$AutoAcctName = $Azautoacct
+				$NodeName = $VMName
+				$autorg = 'OMS'
+				$config = "$ConfigurationName.$VMName"
 
-Register-AzureRmAutomationDscNode -AutomationAccountName $AutoAcctName -AzureVMName $VMName -ActionAfterReboot $ActionAfterReboot -ConfigurationMode $configmode -RebootNodeIfNeeded $True -ResourceGroupName $resourceGroupName -NodeConfigurationName $ConfigurationName -AzureVMLocation $VMLocation -AzureVMResourceGroup $VMresourceGroupName -Verbose
+				Register-AzureRmAutomationDscNode -AutomationAccountName $AutoAcctName -AzureVMName $VMName -ActionAfterReboot $ActionAfterReboot -ConfigurationMode $configmode -RebootNodeIfNeeded $True -ResourceGroupName $autorg -NodeConfigurationName $config -AzureVMLocation $Location -AzureVMResourceGroup $resourceGroupName -Verbose | Out-Null
+}
+
+Function UnRegisterAutoDSC {
+param(
+$Id = $VMName,
+$VMresourceGroupName = $VMresourceGroupName,
+$AutoAcctName = $AutoAcctName
+)
+
+Unregister-AzureRmAutomationDscNode -AutomationAccountName $AutoAcctName -Id $AzureVMName -ResourceGroupName $resourceGroupName -Force -Confirm $False
 }
 
 Function ExportConfig {
-Export-AzureRmAutomationDscConfiguration -Name $ConfigurationName -OutputFolder $OutputFolder -AutomationAccountName $AutoAcctName -ResourceGroupName $resourceGroupName -Force -Confirm $False -Verbose
+Export-AzureRmAutomationDscConfiguration -Name $ConfigurationName -OutputFolder $OutputFolder -AutomationAccountName $AutoAcctName -ResourceGroupName $resourceGroupName -Force -Confirm:$False
 }
 Function ExportConfigreport {
 Export-AzureRmAutomationDscNodeReportContent -NodeId $NodeName -ResourceGroupName $resourceGroupName -AutomationAccountName $AutoAcctName -OutputFolder $OutputFolder -ReportId
 }
 
 Function ImportConfig {
-Import-AzureRmAutomationDscConfiguration -SourcePath $SourcePath -ResourceGroupName $resourceGroupName -AutomationAccountName $AutoAcctName
+Import-AzureRmAutomationDscConfiguration -SourcePath $SourcePath -ResourceGroupName $resourceGroupName -AutomationAccountName $AutoAcctName -Published -Force -Confirm:$False
 }
 Function ImportNodeConfig {
 Import-AzureRmAutomationDscNodeConfiguration -Path $nodeconfigpath -ConfigurationName $ConfigurationName -AutomationAccountName $AutoAcctName -ResourceGroupName $resourceGroupName
@@ -210,7 +230,20 @@ Function GetMetadata {
 Get-AzureRmAutomationDscOnboardingMetaconfig -AutomationAccountName $AutoAcctName -ResourceGroupName $ResourceGroupName
 }
 Function CompileJob {
-Start-AzureRmAutomationDscCompilationJob -ConfigurationName $ConfigurationName -ResourceGroupName $resourceGroupName -AutomationAccountName $AutoAcctName -Parameters -ConfigurationData
+$ConfigData = @{
+	AllNodes = @(
+		@{
+			NodeName = "*"
+			PSDscAllowPlainTextPassword = $True
+			PSDscAllowDomainUser = $true
+		},
+		@{
+			NodeName = "$VMName"
+		}
+	)
+}
+
+Start-AzureRmAutomationDscCompilationJob -ResourceGroupName $resourceGroupName -AutomationAccountName $AutoAcctName -ConfigurationName $ConfigurationName -ConfigurationData $ConfigData
 }
 Function AddAzAutoAccount {
 New-AzureRmAutomationAccount -Location $Location -ResourceGroupName $resourceGroupName -Name $AutoAcctName -Plan Free -WarningAction SilentlyContinue
@@ -225,7 +258,7 @@ AddAzAutoAccount
 		"RegisterDSCNode" {
 Register-AzureRmAutomationDscNode
 }
-		"ImportDSCConfig" {
+		"ImportConfig" {
 ImportConfig
 }
 		"ImportNodeConfig" {
@@ -237,7 +270,7 @@ GetMetadata
 		"CompileJob" {
 CompileJob
 }
-		"ExportDSCConfig" {
+		"ExportConfig" {
 ExportConfigreport
 }
 		"ExportConfigReport" {
@@ -249,7 +282,6 @@ ExportConfig
 }
 }
 
-
 VerifyProfile
 try {
 Get-AzureRmResourceGroup -Location $Location -ErrorAction Stop
@@ -260,12 +292,13 @@ catch {
 	continue
 }
 
-New-AzureRmResourceGroup -Name $resourceGroupName -Location $Location -Force -Confirm $False
+New-AzureRmResourceGroup -Name $resourceGroupName -Location $Location -Force -Confirm:$False
 if($CreateAzAutoAcct) {AddAzAutoAccount}
 if($CreateStorage) {
 StorageNameCheck
 NewStorage
 }
+
 ExecutionAction
 
 Get-AzureRmAutomationAccount -AutomationAccountName $AutoAcctName -ResourceGroupName $ResourceGroupName
